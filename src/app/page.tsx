@@ -222,8 +222,15 @@ export default function Home() {
     );
   }
 
-  const totalSaved = historyData.reduce((acc, item) => acc + (item.original_size - item.final_size), 0);
   const totalProcessed = historyData.length;
+  const totalSaved = historyData.reduce((acc, item) => {
+    if (item.type === 'compress' && item.original_size && item.final_size) {
+      return acc + (item.original_size - item.final_size);
+    }
+    return acc;
+  }, 0);
+  const totalDownloaded = historyData.filter(i => i.type === 'download').length;
+  const totalCompressed = historyData.filter(i => i.type === 'compress').length;
 
   return (
     <main className="min-h-screen bg-[#0a0a0a] text-white selection:bg-blue-500/30">
@@ -292,16 +299,26 @@ export default function Home() {
               <AnimatePresence mode="wait">
                 {mode === "history" ? (
                   <motion.div key="history" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-8">
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="p-6 bg-white/5 rounded-3xl border border-white/10 flex flex-col items-center">
-                        <BarChart3 className="w-6 h-6 text-blue-500 mb-2" />
-                        <span className="text-2xl font-bold">{totalProcessed}</span>
-                        <span className="text-xs text-zinc-500 uppercase tracking-wider font-semibold">Total Processed</span>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                      <div className="p-4 bg-white/5 rounded-2xl border border-white/10 flex flex-col items-center">
+                        <BarChart3 className="w-4 h-4 text-blue-500 mb-1" />
+                        <span className="text-xl font-black">{totalProcessed}</span>
+                        <span className="text-[8px] text-zinc-500 uppercase tracking-widest font-black text-center">Total Tasks</span>
                       </div>
-                      <div className="p-6 bg-white/5 rounded-3xl border border-white/10 flex flex-col items-center">
-                        <CheckCircle2 className="w-6 h-6 text-green-500 mb-2" />
-                        <span className="text-2xl font-bold">{formatBytes(totalSaved)}</span>
-                        <span className="text-xs text-zinc-500 uppercase tracking-wider font-semibold">Total Saved</span>
+                      <div className="p-4 bg-white/5 rounded-2xl border border-white/10 flex flex-col items-center">
+                        <Download className="w-4 h-4 text-zinc-500 mb-1" />
+                        <span className="text-xl font-black">{totalDownloaded}</span>
+                        <span className="text-[8px] text-zinc-500 uppercase tracking-widest font-black text-center">Downloads</span>
+                      </div>
+                      <div className="p-4 bg-white/5 rounded-2xl border border-white/10 flex flex-col items-center">
+                        <Loader2 className="w-4 h-4 text-green-500 mb-1" />
+                        <span className="text-xl font-black">{totalCompressed}</span>
+                        <span className="text-[8px] text-zinc-500 uppercase tracking-widest font-black text-center">Compressions</span>
+                      </div>
+                      <div className="p-4 bg-blue-500/10 rounded-2xl border border-blue-500/20 flex flex-col items-center shadow-lg shadow-blue-500/5">
+                        <CheckCircle2 className="w-4 h-4 text-blue-500 mb-1" />
+                        <span className="text-xl font-black text-blue-500">{formatBytes(totalSaved)}</span>
+                        <span className="text-[8px] text-zinc-500 uppercase tracking-widest font-black text-center">Space Saved</span>
                       </div>
                     </div>
 

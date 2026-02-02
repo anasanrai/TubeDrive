@@ -28,7 +28,11 @@ export const authOptions = {
       return session;
     },
   },
-  debug: true,
+  pages: {
+    error: '/auth/error', // Custom error page
+  },
+  secret: process.env.NEXTAUTH_SECRET,
+  debug: process.env.NODE_ENV === 'development',
 };
 
 const handler = NextAuth(authOptions);

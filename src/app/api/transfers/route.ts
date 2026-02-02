@@ -28,3 +28,27 @@ export async function GET(req: NextRequest) {
         return NextResponse.json({ error: error.message }, { status: 500 });
     }
 }
+
+export async function DELETE(req: NextRequest) {
+    const session = await getServerSession(authOptions);
+    const { id } = await req.json();
+
+    if (!session || !session.user?.email) {
+        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    try {
+        const { error } = await supabase
+            .from('transfers')
+            .delete()
+            .eq('id', id)
+            .eq('user_email', session.user.email);
+
+        if (error) throw error;
+
+        return NextResponse.json({ success: true });
+    } catch (error: any) {
+        console.error("Failed to delete history item:", error);
+        return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+}

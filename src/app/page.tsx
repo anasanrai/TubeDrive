@@ -71,6 +71,20 @@ export default function Home() {
     }
   };
 
+  const deleteHistoryItem = async (id: string) => {
+    try {
+      const res = await fetch("/api/transfers", {
+        method: "DELETE",
+        body: JSON.stringify({ id }),
+      });
+      if (res.ok) {
+        setHistoryData(prev => prev.filter(item => item.id !== id));
+      }
+    } catch (e) {
+      console.error("Failed to delete item", e);
+    }
+  };
+
   useEffect(() => {
     if (session && mode === "compress") {
       fetchDriveFiles();
@@ -292,33 +306,56 @@ export default function Home() {
                     </div>
 
                     <div className="space-y-3">
-                      {isHistoryLoading ? (
+                      <div className="flex justify-between items-center px-2">
+                        <h3 className="text-sm font-bold text-zinc-400 uppercase tracking-widest">Recent Activity</h3>
+                        <button
+                          onClick={fetchHistory}
+                          className="p-2 hover:bg-white/10 rounded-full transition-all text-zinc-500 hover:text-white"
+                          title="Refresh"
+                        >
+                          <Loader2 className={`w-4 h-4 ${isHistoryLoading ? 'animate-spin' : ''}`} />
+                        </button>
+                      </div>
+
+                      {isHistoryLoading && historyData.length === 0 ? (
                         <div className="flex justify-center py-12"><Loader2 className="w-8 h-8 text-blue-500 animate-spin" /></div>
                       ) : historyData.length === 0 ? (
-                        <div className="py-12 text-zinc-500">No transfers yet. Start by downloading a video!</div>
+                        <div className="py-12 text-center bg-white/5 border border-white/10 rounded-3xl text-zinc-500">
+                          No transfers yet. Start by downloading a video!
+                        </div>
                       ) : (
                         historyData.map((item) => (
-                          <div key={item.id} className="p-4 bg-white/5 hover:bg-white/[0.08] border border-white/10 rounded-2xl flex items-center gap-4 transition-colors text-left group">
-                            <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${item.type === 'download' ? 'bg-blue-500/20 text-blue-500' : 'bg-green-500/20 text-green-500'}`}>
-                              {item.type === 'download' ? <Download className="w-5 h-5" /> : <Loader2 className="w-5 h-5" />}
+                          <div key={item.id} className="p-4 bg-white/5 hover:bg-white/[0.08] border border-white/10 rounded-2xl flex items-center gap-4 transition-all text-left group hover:scale-[1.01] active:scale-[0.99]">
+                            <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 shadow-lg ${item.type === 'download' ? 'bg-blue-500/10 text-blue-500 border border-blue-500/20' : 'bg-green-500/10 text-green-500 border border-green-500/20'}`}>
+                              {item.type === 'download' ? <Download className="w-5 h-5" /> : <HardDrive className="w-5 h-5" />}
                             </div>
                             <div className="flex-1 overflow-hidden">
-                              <h4 className="text-sm font-semibold truncate group-hover:text-blue-400 transition-colors">{item.title}</h4>
-                              <div className="flex items-center gap-3 text-[10px] text-zinc-500 font-medium">
-                                <span className="flex items-center gap-1 uppercase"><Clock className="w-3 h-3" /> {new Date(item.created_at).toLocaleDateString()}</span>
+                              <h4 className="text-sm font-bold truncate group-hover:text-white transition-colors text-zinc-200">{item.title}</h4>
+                              <div className="flex items-center gap-3 text-[10px] text-zinc-500 font-bold">
+                                <span className="flex items-center gap-1 uppercase"><Clock className="w-3 h-3" /> {new Date(item.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
                                 {item.type === 'compress' && (
-                                  <span className="text-green-400">Saved {formatBytes(item.original_size - item.final_size)}</span>
+                                  <span className="text-green-500/80 bg-green-500/10 px-1.5 py-0.5 rounded">Saved {formatBytes(item.original_size - item.final_size)}</span>
                                 )}
                               </div>
                             </div>
-                            <a
-                              href={`https://drive.google.com/file/d/${item.drive_file_id}/view`}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="p-2 opacity-0 group-hover:opacity-100 bg-white/10 hover:bg-white/20 rounded-lg transition-all"
-                            >
-                              <ArrowUpRight className="w-4 h-4" />
-                            </a>
+                            <div className="flex items-center gap-1">
+                              <a
+                                href={`https://drive.google.com/file/d/${item.drive_file_id}/view`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="p-2.5 bg-white/5 hover:bg-blue-600/20 text-zinc-400 hover:text-blue-400 rounded-xl transition-all border border-transparent hover:border-blue-500/20"
+                                title="View in Drive"
+                              >
+                                <ArrowUpRight className="w-4 h-4" />
+                              </a>
+                              <button
+                                onClick={() => deleteHistoryItem(item.id)}
+                                className="p-2.5 bg-white/5 hover:bg-red-600/20 text-zinc-400 hover:text-red-400 rounded-xl transition-all border border-transparent hover:border-red-500/20"
+                                title="Remove from History"
+                              >
+                                <XCircle className="w-4 h-4" />
+                              </button>
+                            </div>
                           </div>
                         ))
                       )}

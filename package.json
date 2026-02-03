@@ -19,6 +19,7 @@
     "next-auth": "^4.24.13",
     "react": "19.2.3",
     "react-dom": "19.2.3",
+    "undici": "^7.20.0",
     "youtube-dl-exec": "^3.0.30",
     "ytdl-core": "^4.11.5"
   },

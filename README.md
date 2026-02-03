@@ -68,6 +68,10 @@ GOOGLE_CLIENT_ID=<your-google-client-id>
 GOOGLE_CLIENT_SECRET=<your-google-client-secret>
 NEXT_PUBLIC_SUPABASE_URL=<your-supabase-url>
 NEXT_PUBLIC_SUPABASE_ANON_KEY=<your-supabase-anon-key>
+
+# Optional: If YouTube blocks downloads (bot detection), add cookies
+# Get cookies from your browser while logged into YouTube, format as JSON array
+# YOUTUBE_COOKIES='[{"name":"...", "value":"..."}]'
 ```
 
 ### 5. Run the Development Server

@@ -48,9 +48,41 @@ export async function POST(req: NextRequest) {
                     throw new Error("Invalid YouTube URL");
                 }
 
-                // Get video info
+                // Get video info with agent to bypass bot detection
                 sendUpdate({ status: "fetching", message: "Fetching video information...", progress: 10 });
-                const info = await ytdl.getInfo(url);
+
+                // Create agent with cookies if available
+                const cookies = process.env.YOUTUBE_COOKIES || '';
+                const agent = ytdl.createAgent(cookies ? JSON.parse(cookies) : undefined);
+
+                // Configure options to bypass bot detection
+                const ytdlOptions: any = {
+                    agent,
+                    requestOptions: {
+                        headers: {
+                            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                            'Accept-Language': 'en-US,en;q=0.9',
+                            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+                        }
+                    }
+                };
+
+                // Add OAuth2 token if available (for age-restricted videos)
+                if (process.env.YOUTUBE_OAUTH_TOKEN) {
+                    ytdlOptions.requestOptions.headers['Authorization'] = `Bearer ${process.env.YOUTUBE_OAUTH_TOKEN}`;
+                }
+
+                let info;
+                try {
+                    info = await ytdl.getInfo(url, ytdlOptions);
+                } catch (error: any) {
+                    // If bot detection error, provide helpful message
+                    if (error.message?.includes('Sign in') || error.message?.includes('bot')) {
+                        throw new Error('YouTube is blocking automated access. This is a known limitation. Please try again later or use a different video URL.');
+                    }
+                    throw error;
+                }
+
                 const title = info.videoDetails.title || "video";
                 const filename = `${title}.mp4`.replace(/[/\\?%*:|"<>]/g, "-");
 
@@ -67,8 +99,11 @@ export async function POST(req: NextRequest) {
                     filter: format => format.container === 'mp4' && format.hasVideo && format.hasAudio
                 }) || ytdl.chooseFormat(info.formats, { quality: 'highest' });
 
-                // Create download stream
-                const videoStream = ytdl.downloadFromInfo(info, { format });
+                // Create download stream with same options
+                const videoStream = ytdl.downloadFromInfo(info, {
+                    format,
+                    ...ytdlOptions
+                });
 
                 // Track progress
                 let downloaded = 0;

@@ -3,9 +3,6 @@ import { getServerSession } from "next-auth/next";
 import { authOptions } from "../auth/[...nextauth]/route";
 import { google } from "googleapis";
 import { spawn } from "child_process";
-import path from "path";
-import os from "os";
-import fs from "fs";
 import { supabase } from "@/lib/supabase";
 
 const FFMPEG_PATH = "/opt/homebrew/bin/ffmpeg";
@@ -67,78 +64,117 @@ export async function POST(req: NextRequest) {
                 const totalSize = parseInt(fileMeta.data.size || "0");
                 const finalName = newName ? (newName.endsWith(".mp4") ? newName : `${newName}.mp4`) : `compressed-${originalName}`;
 
-                sendUpdate({ status: "downloading", message: "Fetching video from Drive...", total: totalSize });
+                sendUpdate({ status: "streaming", message: "Starting streaming compression (no disk usage)...", progress: 0 });
 
-                // 3. Download to temp file
-                const tmpInputPath = path.join(os.tmpdir(), `input-${Date.now()}-${originalName}`);
-                const tmpOutputPath = path.join(os.tmpdir(), `output-${Date.now()}-${finalName}`);
-
-                const dest = fs.createWriteStream(tmpInputPath);
+                // 3. Stream from Drive (NO disk write)
                 const driveRes = await drive.files.get(
                     { fileId, alt: "media" },
                     { responseType: "stream" }
                 );
 
+                const { PassThrough } = await import("stream");
+                const inputStream = driveRes.data as any;
+
+                // Monitor input download progress
                 let downloaded = 0;
-                await new Promise((resolve, reject) => {
-                    (driveRes.data as any)
-                        .on("data", (chunk: any) => {
-                            downloaded += chunk.length;
-                            if (totalSize > 0) {
-                                const prog = Math.round((downloaded / totalSize) * 50); // Down = 50%
-                                if (prog % 5 === 0) sendUpdate({ status: "downloading", message: `Downloading: ${Math.round((downloaded / totalSize) * 100)}%`, progress: prog / 2 });
-                            }
-                        })
-                        .on("error", reject)
-                        .pipe(dest)
-                        .on("finish", resolve)
-                        .on("error", reject);
-                });
-
-                sendUpdate({ status: "compressing", message: "Super Compressing (High Performance)...", progress: 50 });
-
-                // 4. Run FFmpeg with dynamic quality settings
-                await new Promise((resolve, reject) => {
-                    const ffmpegArgs = [
-                        "-i", tmpInputPath,
-                        "-vcodec", "libx264",
-                        "-crf", quality.toString(), // 18 (Best) to 35 (Worst)
-                        "-preset", "veryfast",
-                        "-acodec", "aac",
-                        "-b:a", "128k",
-                    ];
-
-                    if (resolution !== "original") {
-                        ffmpegArgs.push("-vf", `scale=-2:${resolution}`);
+                const downloadMonitor = new PassThrough();
+                downloadMonitor.on('data', (chunk: any) => {
+                    downloaded += chunk.length;
+                    if (totalSize > 0 && Math.random() < 0.1) {
+                        sendUpdate({
+                            status: "downloading",
+                            message: `Fetching: ${Math.round((downloaded / totalSize) * 100)}%`,
+                            progress: Math.round((downloaded / totalSize) * 30)
+                        });
                     }
-
-                    ffmpegArgs.push("-y", tmpOutputPath);
-
-                    activeProcess = spawn(FFMPEG_PATH, ffmpegArgs);
-
-                    activeProcess.stderr.on("data", (data: any) => {
-                        // Optional: parse FFmpeg progress here
-                    });
-
-                    activeProcess.on("close", (code: any) => {
-                        activeProcess = null;
-                        if (code === 0) resolve(null);
-                        else reject(new Error(`Compression failed with code ${code}`));
-                    });
                 });
 
-                sendUpdate({ status: "uploading", message: "Saving compressed video back to Drive...", progress: 80 });
+                inputStream.pipe(downloadMonitor);
 
-                // 5. Upload back to Drive
-                const outputSize = fs.statSync(tmpOutputPath).size;
-                const driveResponse = await drive.files.create({
+                sendUpdate({ status: "compressing", message: "🚀 Streaming through Super Compressor...", progress: 30 });
+
+                // 4. Setup FFmpeg with stdin/stdout streaming (NO disk usage)
+                const ffmpegArgs = [
+                    "-i", "pipe:0", // Read from stdin
+                    "-vcodec", "libx264",
+                    "-crf", quality.toString(), // 18 (Best) to 35 (Worst)
+                    "-preset", "ultrafast", // Must be fast for streaming
+                    "-acodec", "aac",
+                    "-b:a", "128k",
+                    "-movflags", "frag_keyframe+empty_moov", // Critical for streaming output
+                    "-f", "mp4", // Force MP4 format
+                ];
+
+                if (resolution !== "original") {
+                    ffmpegArgs.push("-vf", `scale=-2:${resolution}`);
+                }
+
+                ffmpegArgs.push("pipe:1"); // Write to stdout
+
+                activeProcess = spawn(FFMPEG_PATH, ffmpegArgs);
+
+                // Pipe: Drive → FFmpeg stdin
+                downloadMonitor.pipe(activeProcess.stdin);
+
+                // Monitor FFmpeg stderr for progress/errors
+                let ffmpegLog = "";
+                activeProcess.stderr.on("data", (data: any) => {
+                    ffmpegLog += data.toString();
+                    // Optional: Parse ffmpeg progress from stderr
+                    const durationMatch = ffmpegLog.match(/Duration: (\d{2}):(\d{2}):(\d{2})/);
+                    const timeMatch = data.toString().match(/time=(\d{2}):(\d{2}):(\d{2})/);
+                    if (durationMatch && timeMatch) {
+                        const totalSeconds = parseInt(durationMatch[1]) * 3600 + parseInt(durationMatch[2]) * 60 + parseInt(durationMatch[3]);
+                        const currentSeconds = parseInt(timeMatch[1]) * 3600 + parseInt(timeMatch[2]) * 60 + parseInt(timeMatch[3]);
+                        if (totalSeconds > 0) {
+                            const compressProg = Math.round((currentSeconds / totalSeconds) * 100);
+                            sendUpdate({
+                                status: "compressing",
+                                message: `Compressing: ${compressProg}%`,
+                                progress: 30 + Math.round(compressProg * 0.5)
+                            });
+                        }
+                    }
+                });
+
+                // Monitor output size
+                let outputSize = 0;
+                const outputMonitor = new PassThrough();
+                outputMonitor.on('data', (chunk: any) => {
+                    outputSize += chunk.length;
+                });
+
+                // Pipe: FFmpeg stdout → Drive
+                activeProcess.stdout.pipe(outputMonitor);
+
+                sendUpdate({ status: "uploading", message: "Streaming to Drive...", progress: 80 });
+
+                // 5. Upload compressed stream to Drive (NO disk write)
+                const driveUploadPromise = drive.files.create({
                     requestBody: { name: finalName },
                     media: {
                         mimeType: "video/mp4",
-                        body: fs.createReadStream(tmpOutputPath),
+                        body: outputMonitor,
                     },
                     fields: "id",
                 });
+
+                // Wait for FFmpeg to finish processing
+                await new Promise((resolve, reject) => {
+                    activeProcess.on("close", (code: any) => {
+                        activeProcess = null;
+                        if (code === 0) {
+                            sendUpdate({ status: "finalizing", message: "Finalizing upload...", progress: 95 });
+                            resolve(null);
+                        } else {
+                            reject(new Error(`FFmpeg failed: ${ffmpegLog.slice(-500)}`));
+                        }
+                    });
+                    activeProcess.on("error", reject);
+                });
+
+                // Wait for Drive upload to complete
+                const driveResponse = await driveUploadPromise;
 
                 // Log to Supabase
                 await supabase.from('transfers').insert({
@@ -151,21 +187,18 @@ export async function POST(req: NextRequest) {
                     drive_file_id: driveResponse.data.id
                 });
 
-                // 6. Cleanup
-                if (fs.existsSync(tmpInputPath)) fs.unlinkSync(tmpInputPath);
-                if (fs.existsSync(tmpOutputPath)) fs.unlinkSync(tmpOutputPath);
-
                 sendUpdate({
                     status: "success",
                     fileId: driveResponse.data.id,
                     message: "Successfully compressed and saved!",
                     originalSize: totalSize,
-                    compressedSize: outputSize
+                    compressedSize: outputSize,
+                    savings: totalSize > 0 ? Math.round(((totalSize - outputSize) / totalSize) * 100) : 0
                 });
                 safeClose();
 
             } catch (error: any) {
-                console.error("Compression Error:", error);
+                console.error("Streaming Compression Error:", error);
                 sendUpdate({ status: "error", message: error.message || "Compression failed" });
                 safeClose();
             } finally {

@@ -63,19 +63,43 @@ export async function POST(req: NextRequest) {
                 // 1. Get Video Metadata & Direct URL
                 const info: any = await new Promise((resolve, reject) => {
                     const { spawn } = require("child_process");
-                    activeProcess = spawn(YOUTUBE_DL_PATH, [
-                        url,
-                        "--dump-single-json",
-                        "--no-check-certificates",
-                        "-f", "best[ext=mp4]"
-                    ]);
+
+                    // Set a timeout to prevent hanging
+                    const timeout = setTimeout(() => {
+                        if (activeProcess) {
+                            activeProcess.kill();
+                            activeProcess = null;
+                        }
+                        reject(new Error("yt-dlp process timeout. This may occur if yt-dlp is not available on the server."));
+                    }, 30000); // 30 second timeout
+
+                    try {
+                        activeProcess = spawn(YOUTUBE_DL_PATH, [
+                            url,
+                            "--dump-single-json",
+                            "--no-check-certificates",
+                            "-f", "best[ext=mp4]"
+                        ]);
+                    } catch (e: any) {
+                        clearTimeout(timeout);
+                        reject(new Error(`Failed to spawn yt-dlp: ${e.message}`));
+                        return;
+                    }
 
                     let stdout = "";
                     let stderr = "";
+
+                    activeProcess.on("error", (err: any) => {
+                        clearTimeout(timeout);
+                        activeProcess = null;
+                        reject(new Error(`yt-dlp spawn error: ${err.message}. The binary may not be available on this deployment.`));
+                    });
+
                     activeProcess.stdout.on("data", (data: Buffer) => stdout += data.toString());
                     activeProcess.stderr.on("data", (data: Buffer) => stderr += data.toString());
 
                     activeProcess.on("close", (code: number | null) => {
+                        clearTimeout(timeout);
                         activeProcess = null;
                         if (code === 0) {
                             try {
@@ -84,7 +108,7 @@ export async function POST(req: NextRequest) {
                                 reject(new Error("Failed to parse video metadata"));
                             }
                         } else {
-                            reject(new Error(`Metadata fetch failed: ${stderr.slice(0, 100)}`));
+                            reject(new Error(`Metadata fetch failed (code ${code}): ${stderr.slice(0, 200)}`));
                         }
                     });
                 });
@@ -192,14 +216,24 @@ export async function POST(req: NextRequest) {
                 await new Promise((resolve, reject) => {
                     // Use -f best to avoid merging (merging requires disk)
                     // Use -o - to stream to stdout
-                    activeProcess = spawn(YOUTUBE_DL_PATH, [
-                        url,
-                        "-f", "best[ext=mp4]/best",
-                        "-o", "-",
-                        "--no-playlist",
-                        "--no-check-certificates",
-                        "--buffer-size", "16K" // Smaller buffer for smoother streaming
-                    ]);
+                    try {
+                        activeProcess = spawn(YOUTUBE_DL_PATH, [
+                            url,
+                            "-f", "best[ext=mp4]/best",
+                            "-o", "-",
+                            "--no-playlist",
+                            "--no-check-certificates",
+                            "--buffer-size", "16K" // Smaller buffer for smoother streaming
+                        ]);
+                    } catch (e: any) {
+                        reject(new Error(`Failed to spawn yt-dlp for streaming: ${e.message}`));
+                        return;
+                    }
+
+                    activeProcess.on("error", (err: any) => {
+                        activeProcess = null;
+                        reject(new Error(`yt-dlp streaming error: ${err.message}`));
+                    });
 
                     // Pipe yt-dlp stdout -> progressStream -> Drive
                     if (activeProcess.stdout) {

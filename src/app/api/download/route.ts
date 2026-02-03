@@ -156,85 +156,91 @@ export async function POST(req: NextRequest) {
                     return;
                 }
 
-                // 4. Fallback: High-Concurrency Download
-                sendUpdate({ status: "downloading", message: "Direct tunnel unavailable. Using high-concurrency download...", progress: 0 });
-                const tmpPath = path.join(os.tmpdir(), filename);
+                // 4. Fallback: Streaming Download via yt-dlp (No Disk Usage)
+                sendUpdate({ status: "downloading", message: "Starting direct stream to Drive...", progress: 0 });
                 const { spawn } = await import("child_process");
+                const { PassThrough } = await import("stream");
+
+                // Create a PassThrough stream to monitor progress
+                let transferred = 0;
+                const progressStream = new PassThrough();
+                progressStream.on('data', (chunk: any) => {
+                    transferred += chunk.length;
+                    // Send periodic updates (every ~5MB or similar, kept simple here)
+                    if (Math.random() < 0.05) { // Throttled updates
+                        sendUpdate({
+                            status: "downloading",
+                            message: "Streaming...",
+                            transferred: transferred
+                            // Note: total size is unknown in stdout stream usually, 
+                            // so we rely on 'transferred' bytes
+                        });
+                    }
+                });
+
+                const driveUploadPromise = drive.files.create({
+                    requestBody: { name: filename },
+                    media: {
+                        mimeType: "video/mp4",
+                        body: progressStream,
+                    },
+                    fields: "id",
+                });
 
                 await new Promise((resolve, reject) => {
+                    // Use -f best to avoid merging (merging requires disk)
+                    // Use -o - to stream to stdout
                     activeProcess = spawn(YOUTUBE_DL_PATH, [
                         url,
-                        "-f", "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best",
-                        "-o", tmpPath,
-                        "--concurrent-fragments", "16",
-                        "--buffer-size", "10M",
-                        "--no-mtime",
-                        "--progress",
-                        "--newline"
+                        "-f", "best[ext=mp4]/best",
+                        "-o", "-",
+                        "--no-playlist",
+                        "--no-check-certificates",
+                        "--buffer-size", "16K" // Smaller buffer for smoother streaming
                     ]);
 
-                    activeProcess.stdout.on("data", (data: any) => {
-                        const line = data.toString();
-                        const match = line.match(/(\d+\.\d+)%/);
-                        if (match) {
-                            const progress = parseFloat(match[1]);
-                            sendUpdate({
-                                status: "downloading",
-                                message: `Fast Download: ${Math.round(progress)}%`,
-                                progress: Math.min(Math.round(progress), 100)
-                            });
-                        }
-                    });
+                    // Pipe yt-dlp stdout -> progressStream -> Drive
+                    if (activeProcess.stdout) {
+                        activeProcess.stdout.pipe(progressStream);
+                    }
 
                     let errorMsg = "";
-                    activeProcess.stderr.on("data", (data: any) => errorMsg += data.toString());
+                    if (activeProcess.stderr) {
+                        activeProcess.stderr.on("data", (data: any) => {
+                            errorMsg += data.toString();
+                            // Optional: Try to parse progress from stderr if needed, 
+                            // but reliance on stdout size is more reliable for 'transferred'
+                        });
+                    }
 
                     activeProcess.on("close", (code: any) => {
                         activeProcess = null;
                         if (code === 0) resolve(null);
-                        else reject(new Error(`Download failed: ${errorMsg.slice(0, 100)}`));
+                        else reject(new Error(`Stream failed: ${errorMsg.slice(0, 200)}`));
                     });
+
+                    // Handle stream errors
+                    activeProcess.stdout.on('error', (err: any) => reject(err));
                 });
 
-                // Upload the fast-downloaded file
-                sendUpdate({ status: "uploading", message: "Pushing to Drive...", progress: 0 });
-                const fileSize = fs.statSync(tmpPath).size;
-                const driveResponse = await drive.files.create({
-                    requestBody: { name: filename },
-                    media: {
-                        mimeType: "video/mp4",
-                        body: fs.createReadStream(tmpPath),
-                    },
-                    fields: "id",
-                }, {
-                    onUploadProgress: (evt) => {
-                        sendUpdate({
-                            status: "uploading",
-                            message: "Pushing to Drive...",
-                            progress: Math.round((evt.bytesRead / fileSize) * 100),
-                            transferred: evt.bytesRead,
-                            total: fileSize
-                        });
-                    }
-                });
+                const driveResponse = await driveUploadPromise;
 
                 // Log to Supabase
                 await supabase.from('transfers').insert({
                     user_email: session.user.email,
                     type: 'download',
                     title: title,
-                    original_size: fileSize,
-                    final_size: fileSize,
+                    original_size: transferred,
+                    final_size: transferred,
                     status: 'success',
                     drive_file_id: driveResponse.data.id
                 });
 
-                if (fs.existsSync(tmpPath)) fs.unlinkSync(tmpPath);
                 sendUpdate({ status: "success", fileId: driveResponse.data.id, message: "Successfully saved to Drive!" });
                 safeClose();
 
             } catch (error: any) {
-                console.error("Light Speed Error:", error);
+                console.error("Streaming Error:", error);
                 sendUpdate({ status: "error", message: error.message || "An unexpected error occurred" });
                 safeClose();
             } finally {

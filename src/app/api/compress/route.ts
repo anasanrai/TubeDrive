@@ -4,7 +4,9 @@ import { authOptions } from "../auth/[...nextauth]/route";
 import { google } from "googleapis";
 import { spawn } from "child_process";
 import { supabase } from "@/lib/supabase";
-import ffmpegPath from "ffmpeg-static";
+
+// Try to use system ffmpeg (works locally, not on Vercel)
+const FFMPEG_PATH = process.env.FFMPEG_PATH || "ffmpeg";
 
 export async function POST(req: NextRequest) {
     const session = await getServerSession(authOptions);
@@ -110,7 +112,7 @@ export async function POST(req: NextRequest) {
 
                 ffmpegArgs.push("pipe:1"); // Write to stdout
 
-                activeProcess = spawn(ffmpegPath!, ffmpegArgs);
+                activeProcess = spawn(FFMPEG_PATH, ffmpegArgs);
 
                 // Pipe: Drive → FFmpeg stdin
                 downloadMonitor.pipe(activeProcess.stdin);

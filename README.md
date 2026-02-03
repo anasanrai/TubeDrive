@@ -9,6 +9,9 @@ A Next.js application that allows users to download YouTube videos and upload th
 - 🔐 Secure OAuth2 authentication with Google
 - 📊 Track transfer history with Supabase
 - 🎨 Modern, responsive UI
+- 🗜️ Video compression (requires ffmpeg - local development only)
+
+> **Note:** The compression feature requires ffmpeg to be installed on the system. This works in local development but may not be available on Vercel's free tier due to binary size limitations.
 
 ## Getting Started
 

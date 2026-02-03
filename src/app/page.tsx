@@ -287,7 +287,7 @@ export default function Home() {
           animate={{ opacity: 1, y: 0 }}
           className="text-5xl md:text-7xl font-bold mb-6 tracking-tight"
         >
-          {mode === "download" ? "YouTube to Drive" : mode === "compress" ? "Super Compressor" : "Transfer History"}
+          {mode === "download" ? <><span className="text-[#FF0000]">YouTube</span> to Drive</> : mode === "compress" ? "Super Compressor" : "Transfer History"}
           <span className="block text-blue-500">
             {mode === "download" ? "Instantly." : mode === "compress" ? "Optimized." : "Tracked."}
           </span>

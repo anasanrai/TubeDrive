@@ -9,6 +9,7 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@distube/ytdl-core": "^4.16.12",
     "@supabase/supabase-js": "^2.93.3",
     "axios": "^1.13.4",
     "framer-motion": "^12.29.2",
@@ -19,7 +20,7 @@
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "youtube-dl-exec": "^3.0.30",
-    "yt-dlp-wrap": "^2.3.12"
+    "ytdl-core": "^4.11.5"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",

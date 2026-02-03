@@ -4,14 +4,14 @@ A Next.js application that allows users to download YouTube videos and upload th
 
 ## Features
 
-- 🎥 Download YouTube videos
-- ☁️ Upload to Google Drive automatically
+- 🎥 Download YouTube videos directly to Google Drive
+- ☁️ Seamless streaming (no server storage used)
 - 🔐 Secure OAuth2 authentication with Google
 - 📊 Track transfer history with Supabase
-- 🎨 Modern, responsive UI
-- 🗜️ Video compression (requires ffmpeg - local development only)
+- 🎨 Modern, responsive UI  
+- ⚡ Pure JavaScript implementation (works on Vercel)
 
-> **Note:** The compression feature requires ffmpeg to be installed on the system. This works in local development but may not be available on Vercel's free tier due to binary size limitations.
+> **Note:** Video compression feature requires ffmpeg and is only available when self-hosting. The download feature works perfectly on all platforms including Vercel!
 
 ## Getting Started
 

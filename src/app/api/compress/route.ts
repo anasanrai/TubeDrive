@@ -15,6 +15,13 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    // Check if we're on Vercel (compression not supported due to ffmpeg binary requirements)
+    if (process.env.VERCEL) {
+        return NextResponse.json({
+            error: "🚫 Video compression is not available on this deployment.\n\nCompression requires ffmpeg, which isn't supported on Vercel's serverless platform.\n\n✅ The download feature works perfectly!\n\n💡 Tip: You can download videos and compress them locally, or use a different hosting platform for compression."
+        }, { status: 503 });
+    }
+
     const { fileId, newName, quality = 28, resolution = "original" } = await req.json();
 
     if (!fileId) {

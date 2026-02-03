@@ -4,8 +4,7 @@ import { authOptions } from "../auth/[...nextauth]/route";
 import { google } from "googleapis";
 import { spawn } from "child_process";
 import { supabase } from "@/lib/supabase";
-
-const FFMPEG_PATH = "/opt/homebrew/bin/ffmpeg";
+import ffmpegPath from "ffmpeg-static";
 
 export async function POST(req: NextRequest) {
     const session = await getServerSession(authOptions);
@@ -111,7 +110,7 @@ export async function POST(req: NextRequest) {
 
                 ffmpegArgs.push("pipe:1"); // Write to stdout
 
-                activeProcess = spawn(FFMPEG_PATH, ffmpegArgs);
+                activeProcess = spawn(ffmpegPath!, ffmpegArgs);
 
                 // Pipe: Drive → FFmpeg stdin
                 downloadMonitor.pipe(activeProcess.stdin);

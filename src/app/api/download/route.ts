@@ -6,8 +6,10 @@ import fs from "fs";
 import path from "path";
 import os from "os";
 import { supabase } from "@/lib/supabase";
+import YTDlpWrap from "yt-dlp-wrap";
 
-const YOUTUBE_DL_PATH = "/opt/homebrew/bin/yt-dlp";
+const ytDlp = new YTDlpWrap();
+const YOUTUBE_DL_PATH = ytDlp.getBinaryPath();
 
 let activeTransfers = 0;
 const MAX_CONCURRENT_TRANSFERS = 5;
